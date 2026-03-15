@@ -1,0 +1,325 @@
+# -*- coding: utf-8 -*-
+"""
+Habitat Imaging Analysis for High-Risk Lung Adenocarcinoma (LUAD) Prediction
+-----------------------------------------------------------------------------
+This software implements a habitat imaging pipeline to quantify solid components
+in part-solid nodules on low-dose CT and predict high-risk LUAD.
+Core algorithm: density threshold (-405 HU) and entropy threshold (4.204) are used
+to generate four habitat labels; label2 volume (high density & low entropy) is used
+for prediction.
+"""
+
+import os
+import glob
+import numpy as np
+import SimpleITK as sitk
+from scipy.ndimage import generic_filter
+import pandas as pd
+import warnings
+warnings.filterwarnings('ignore')
+
+# ==================== CONFIGURATION ====================
+INPUT_DIR = r"C:\Users\83494\Desktop\test\input"
+OUTPUT_DIR = r"C:\Users\83494\Desktop\test\output"        # Root directory for all output files
+NEW_SPACING = (1.0, 1.0, 1.0)                             # Target voxel spacing (isotropic 1 mm)
+CT_CUTOFF = -405                                          # CT density threshold (HU)
+ENTROPY_CUTOFF = 4.204                                    # Entropy threshold
+LABEL2_VOLUME_THRESHOLD = 172                             # Volume threshold for label2 (mm³) used for prediction
+# ========================================================
+
+# Create subdirectories under OUTPUT_DIR
+RESAMPLE_DIR = os.path.join(OUTPUT_DIR, "1_resampled")
+ENTROPY_DIR = os.path.join(OUTPUT_DIR, "2_entropy_maps")
+DERIVED_MASKS_DIR = os.path.join(OUTPUT_DIR, "3_threshold_masks")
+FUSION_DIR = os.path.join(OUTPUT_DIR, "4_fusion_masks")
+RESULTS_DIR = os.path.join(OUTPUT_DIR, "5_prediction_results")
+for d in [RESAMPLE_DIR, ENTROPY_DIR, DERIVED_MASKS_DIR, FUSION_DIR, RESULTS_DIR]:
+    os.makedirs(d, exist_ok=True)
+
+
+# ==================== UTILITY FUNCTIONS ====================
+def read_image(path):
+    """Read image using SimpleITK."""
+    return sitk.ReadImage(path)
+
+def write_image(img, path):
+    """Write image using SimpleITK with compression."""
+    sitk.WriteImage(img, path, useCompression=True)
+
+def resample_image(img, new_spacing, is_mask=False):
+    """
+    Resample image to target spacing.
+    For mask images, nearest neighbor interpolation is used; for CT, linear interpolation.
+    """
+    original_spacing = img.GetSpacing()
+    original_size = img.GetSize()
+    new_size = [
+        int(round(original_size[i] * original_spacing[i] / new_spacing[i]))
+        for i in range(3)
+    ]
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetOutputSpacing(new_spacing)
+    resampler.SetSize(new_size)
+    resampler.SetOutputDirection(img.GetDirection())
+    resampler.SetOutputOrigin(img.GetOrigin())
+    resampler.SetTransform(sitk.Transform())
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor if is_mask else sitk.sitkLinear)
+    return resampler.Execute(img)
+
+
+# ==================== STEP 1: RESAMPLE ====================
+def step1_resample(ct_path, mask_path):
+    """Resample CT and mask to 1 mm isotropic spacing."""
+    case_name = os.path.basename(ct_path).replace('.nii.gz', '')
+    out_ct = os.path.join(RESAMPLE_DIR, f"{case_name}_resample.nii.gz")
+    out_mask = os.path.join(RESAMPLE_DIR, f"{case_name}_resample_mask.nii.gz")
+
+    ct_img = read_image(ct_path)
+    mask_img = read_image(mask_path)
+
+    ct_resampled = resample_image(ct_img, NEW_SPACING, is_mask=False)
+    mask_resampled = resample_image(mask_img, NEW_SPACING, is_mask=True)
+
+    write_image(ct_resampled, out_ct)
+    write_image(mask_resampled, out_mask)
+    print(f"  [Resample] Saved: {os.path.basename(out_ct)} and {os.path.basename(out_mask)}")
+    return out_ct, out_mask
+
+
+# ==================== STEP 2: ENTROPY MAP ====================
+def calculate_entropy_3x3x3(data):
+    """Compute local entropy in a 3x3x3 neighborhood."""
+    def entropy_calculator(values):
+        values = values.reshape(3, 3, 3)
+        values = values[~np.isnan(values)]
+        if len(values) == 0:
+            return np.nan
+        hist, _ = np.histogram(values, bins=32, density=True)
+        prob = hist / hist.sum() if hist.sum() > 0 else hist
+        prob = prob[prob > 0]
+        return -np.sum(prob * np.log2(prob))
+
+    entropy_map = generic_filter(data, entropy_calculator, size=3, mode='constant', cval=np.nan)
+    return entropy_map
+
+def step2_compute_entropy(ct_resampled_path):
+    """Compute entropy map from resampled CT."""
+    ct_img = read_image(ct_resampled_path)
+    ct_arr = sitk.GetArrayFromImage(ct_img).astype(np.float32)
+
+    print("  [Entropy] Computing, please wait...")
+    entropy_arr = calculate_entropy_3x3x3(ct_arr)
+
+    # Replace NaNs with 0 (background)
+    entropy_arr = np.nan_to_num(entropy_arr, nan=0.0)
+
+    entropy_img = sitk.GetImageFromArray(entropy_arr)
+    entropy_img.CopyInformation(ct_img)   # Preserve spatial metadata
+
+    base = os.path.basename(ct_resampled_path).replace('_resample.nii.gz', '')
+    out_path = os.path.join(ENTROPY_DIR, f"{base}_resample_entropy.nii.gz")
+    write_image(entropy_img, out_path)
+    print(f"  [Entropy] Saved: {os.path.basename(out_path)}")
+    return out_path
+
+
+# ==================== STEP 3: THRESHOLD MASKS ====================
+def step3_generate_threshold_masks(ct_resampled_path, mask_resampled_path, entropy_path):
+    """
+    Generate four binary masks based on CT density and entropy thresholds:
+        - high density (CT >= CT_CUTOFF)
+        - low density  (CT < CT_CUTOFF)
+        - high entropy (entropy >= ENTROPY_CUTOFF)
+        - low entropy  (entropy < ENTROPY_CUTOFF)
+    All masks are restricted to the original tumor mask.
+    """
+    base = os.path.basename(ct_resampled_path).replace('_resample.nii.gz', '')
+
+    ct_img = read_image(ct_resampled_path)
+    mask_img = read_image(mask_resampled_path)
+    entropy_img = read_image(entropy_path)
+
+    ct_arr = sitk.GetArrayFromImage(ct_img)
+    mask_arr = sitk.GetArrayFromImage(mask_img).astype(bool)
+    entropy_arr = sitk.GetArrayFromImage(entropy_img)
+
+    # Initialize four masks
+    high_density = np.zeros_like(mask_arr, dtype=np.uint8)
+    low_density = np.zeros_like(mask_arr, dtype=np.uint8)
+    high_entropy = np.zeros_like(mask_arr, dtype=np.uint8)
+    low_entropy = np.zeros_like(mask_arr, dtype=np.uint8)
+
+    # Apply thresholds only within the mask region
+    region_mask = mask_arr > 0
+    high_density[region_mask] = (ct_arr[region_mask] >= CT_CUTOFF).astype(np.uint8)
+    low_density[region_mask]  = (ct_arr[region_mask] < CT_CUTOFF).astype(np.uint8)
+    high_entropy[region_mask] = (entropy_arr[region_mask] >= ENTROPY_CUTOFF).astype(np.uint8)
+    low_entropy[region_mask]  = (entropy_arr[region_mask] < ENTROPY_CUTOFF).astype(np.uint8)
+
+    def save_mask(arr, suffix):
+        img = sitk.GetImageFromArray(arr)
+        img.CopyInformation(mask_img)
+        path = os.path.join(DERIVED_MASKS_DIR, f"{base}_{suffix}.nii.gz")
+        write_image(img, path)
+        return path
+
+    paths = {
+        'high_density': save_mask(high_density, 'high_density_mask'),
+        'low_density': save_mask(low_density, 'low_density_mask'),
+        'high_entropy': save_mask(high_entropy, 'high_entropy_mask'),
+        'low_entropy': save_mask(low_entropy, 'low_entropy_mask')
+    }
+
+    print(f"  [Threshold masks] Generated 4 binary mask files")
+    return paths, ct_arr, mask_arr, entropy_arr, mask_img
+
+
+# ==================== STEP 4: FUSE MASKS INTO 4-LABEL IMAGE ====================
+def step4_fuse_masks(threshold_paths, mask_img, base):
+    """
+    Fuse the four binary masks into a single 4‑label image:
+        Label 1: high density & high entropy   (H_density & H_entropy)
+        Label 2: high density & low entropy    (H_density & L_entropy)
+        Label 3: low density  & high entropy   (L_density & H_entropy)
+        Label 4: low density  & low entropy    (L_density & L_entropy)
+    """
+    high_density = sitk.GetArrayFromImage(read_image(threshold_paths['high_density'])).astype(bool)
+    low_density  = sitk.GetArrayFromImage(read_image(threshold_paths['low_density'])).astype(bool)
+    high_entropy = sitk.GetArrayFromImage(read_image(threshold_paths['high_entropy'])).astype(bool)
+    low_entropy  = sitk.GetArrayFromImage(read_image(threshold_paths['low_entropy'])).astype(bool)
+
+    fused = np.zeros_like(high_density, dtype=np.uint8)
+    fused[high_density & high_entropy] = 1   # Label 1: H_density & H_entropy
+    fused[high_density & low_entropy]  = 2   # Label 2: H_density & L_entropy
+    fused[low_density  & high_entropy] = 3   # Label 3: L_density & H_entropy
+    fused[low_density  & low_entropy]  = 4   # Label 4: L_density & L_entropy
+
+    fused_img = sitk.GetImageFromArray(fused)
+    fused_img.CopyInformation(mask_img)
+    out_path = os.path.join(FUSION_DIR, f"{base}_fused_labels.nii.gz")
+    write_image(fused_img, out_path)
+    print(f"  [Fusion] 4‑label image saved: {os.path.basename(out_path)}")
+    return fused, out_path
+
+
+# ==================== STEP 5: VOLUME COMPUTATION ====================
+def step5_compute_volumes(fused_arr, mask_arr, voxel_volume=1.0):
+    """
+    Compute number of voxels, volume (mm³) and volume ratio for each label.
+    Voxel volume is assumed to be 1 mm³ because of prior resampling to 1 mm isotropic.
+    """
+    total_voxels = np.sum(mask_arr > 0)
+    if total_voxels == 0:
+        return None
+
+    volumes = {}
+    for label in [1, 2, 3, 4]:
+        count = np.sum(fused_arr == label)
+        vol = count * voxel_volume
+        volume_ratio = count / total_voxels if total_voxels > 0 else 0
+        volumes[label] = {'count': count, 'volume_mm3': vol, 'volume_ratio': volume_ratio}
+    return volumes
+
+
+# ==================== STEP 6: PREDICTION ====================
+def step6_predict(volumes):
+    """Predict class based on volume of label 2 (H_density & L_entropy)."""
+    label2_vol = volumes.get(2, {}).get('volume_mm3', 0)
+    return 1 if label2_vol > LABEL2_VOLUME_THRESHOLD else 0
+
+
+# ==================== MAIN PIPELINE FOR ONE CASE ====================
+def process_case(ct_path, mask_path):
+    """Run the complete pipeline for one case."""
+    case_name = os.path.basename(ct_path).replace('.nii.gz', '')
+    print(f"\n========== Processing case: {case_name} ==========")
+
+    # Step 1: Resample
+    ct_resampled, mask_resampled = step1_resample(ct_path, mask_path)
+
+    # Step 2: Entropy map
+    entropy_path = step2_compute_entropy(ct_resampled)
+
+    # Step 3: Threshold masks
+    threshold_paths, ct_arr, mask_arr, entropy_arr, mask_img = step3_generate_threshold_masks(
+        ct_resampled, mask_resampled, entropy_path
+    )
+
+    # Step 4: Fuse into 4‑label image
+    fused_arr, fused_path = step4_fuse_masks(threshold_paths, mask_img, case_name)
+
+    # Step 5: Volume statistics
+    volumes = step5_compute_volumes(fused_arr, mask_arr, voxel_volume=1.0)
+    if volumes is None:
+        print("  [Warning] Mask region empty, skipping statistics.")
+        return None
+
+    print("  [Volume statistics]")
+    for label in [1,2,3,4]:
+        # Annotate each label with its meaning
+        if label == 1:
+            desc = "H_density & H_entropy"
+        elif label == 2:
+            desc = "H_density & L_entropy"
+        elif label == 3:
+            desc = "L_density & H_entropy"
+        else:  # label == 4
+            desc = "L_density & L_entropy"
+        print(f"    Label {label} ({desc}): volume = {volumes[label]['volume_mm3']:.2f} mm³, volume_ratio = {volumes[label]['volume_ratio']:.4f}")
+
+    # Step 6: Prediction
+    prediction = step6_predict(volumes)
+    print(f"  [Prediction] Label2 volume > {LABEL2_VOLUME_THRESHOLD} mm³ ? -> {prediction}")
+
+    # Collect results
+    result = {
+        'case': case_name,
+        'label1_H_density & H_entropy_volume_mm3': volumes[1]['volume_mm3'],
+        'label2_H_density & L_entropy_volume_mm3': volumes[2]['volume_mm3'],
+        'label3_L_density & H_entropy_volume_mm3': volumes[3]['volume_mm3'],
+        'label4_L_density & L_entropy_volume_mm3': volumes[4]['volume_mm3'],
+        'label1_H_density & H_entropy_volume_ratio': volumes[1]['volume_ratio'],
+        'label2_H_density & L_entropy_volume_ratio': volumes[2]['volume_ratio'],
+        'label3_L_density & H_entropy_volume_ratio': volumes[3]['volume_ratio'],
+        'label4_L_density & L_entropy_volume_ratio': volumes[4]['volume_ratio'],
+        'prediction': prediction
+    }
+    return result
+
+
+# ==================== MAIN ENTRY ====================
+def main():
+    """Main entry: process all cases in INPUT_DIR."""
+    ct_files = glob.glob(os.path.join(INPUT_DIR, "*.nii.gz"))
+    ct_files = [f for f in ct_files if not f.endswith('_mask.nii.gz')]
+
+    if not ct_files:
+        print(f"No CT files found in {INPUT_DIR}")
+        return
+
+    print(f"Found {len(ct_files)} cases")
+
+    results_list = []
+    for ct_path in ct_files:
+        base = os.path.basename(ct_path).replace('.nii.gz', '')
+        mask_path = os.path.join(INPUT_DIR, f"{base}_mask.nii.gz")
+        if not os.path.exists(mask_path):
+            print(f"Warning: Corresponding mask not found for {base}, skipping.")
+            continue
+
+        res = process_case(ct_path, mask_path)
+        if res:
+            results_list.append(res)
+
+    if results_list:
+        df = pd.DataFrame(results_list)
+        out_csv = os.path.join(RESULTS_DIR, "prediction_results.csv")
+        df.to_csv(out_csv, index=False)
+        print(f"\nResults saved to: {out_csv}")
+        print(df)
+    else:
+        print("No cases successfully processed.")
+
+
+if __name__ == "__main__":
+    main()
