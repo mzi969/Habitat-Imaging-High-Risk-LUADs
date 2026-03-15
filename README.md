@@ -1,5 +1,6 @@
 # Habitat Imaging Analysis for High-Risk Lung Adenocarcinoma (LUAD) Prediction on Low-Dose Computed Tomography
 **1.Introduction**
+
 This software implements a fully automated habitat imaging pipeline for quantifying solid components within part-solid nodules on low-dose computed tomography (LDCT) and predicting high-risk lung adenocarcinoma (LUAD). Using the Otsu threshold method, density and entropy maps are clustered to generate four distinct habitats. The solid component is defined as the high density & low entropy region, and its volume is used as the key predictor (Definition 3). The algorithm demonstrated superior diagnostic performance (AUC = 0.871 in training, 0.865 in external test) compared to conventional diameter and density measurements.
 
 **2. File Requirements and Format**
@@ -9,6 +10,7 @@ This software implements a fully automated habitat imaging pipeline for quantify
 •	Segmentation Masks: .nii.gz or .nii (NIfTI format)
 
 **3. Processing Pipeline**
+
 The software executes the following six steps for each case:
 
 **3.1 Step 1: Image Resampling**
@@ -72,6 +74,7 @@ o	Label 4: low density & low entropy
 **4. Disclaimer**
 
 **4.1 Intended Use**
+
 This software at the current stage is primarily intended for research purposes. While it can provide valuable clinical references, it should be integrated with comprehensive clinical evaluation rather than used as the sole basis for clinical decision-making.
 
 **4.2 Limitations**
@@ -83,6 +86,7 @@ This software at the current stage is primarily intended for research purposes. 
 •	The fixed thresholds (–405 HU, 4.204, 172 mm³) were derived from a specific study population; they may not be optimal for other cohorts without recalibration.
 ________________________________________
 **5. Continuous Improvement**
+
 We are committed to the ongoing validation and improvement of this tool. Users are encouraged to:
 
 •	Provide feedback on clinical utility and performance.
