@@ -68,3 +68,31 @@ o	Label 4: low density & low entropy
 •	Decision Rule: If the volume of Label 2 (high density & low entropy) exceeds the threshold (172 mm³), the case is classified as high risk LUAD (Class 1); otherwise low risk LUAD (Class 0).
 
 •	Output: Prediction result saved as a CSV file in 5_prediction_results/ directory.
+
+**4. Disclaimer**
+
+**4.1 Intended Use**
+This software at the current stage is primarily intended for research purposes. While it can provide valuable clinical references, it should be integrated with comprehensive clinical evaluation rather than used as the sole basis for clinical decision-making.
+
+**4.2 Limitations**
+
+•	Requires accurate CT images and tumor masks; results are highly dependent on the quality of the input mask.
+
+•	Performance may vary with different patient populations, CT scanner models, and acquisition protocols.
+
+•	The fixed thresholds (–405 HU, 4.204, 172 mm³) were derived from a specific study population; they may not be optimal for other cohorts without recalibration.
+________________________________________
+**5. Continuous Improvement**
+We are committed to the ongoing validation and improvement of this tool. Users are encouraged to:
+
+•	Provide feedback on clinical utility and performance.
+
+•	Participate in validation studies.
+
+•	Report any discrepancies with clinical outcomes.
+
+•	Share suggestions for enhancement.
+
+For questions or feedback, please contact the software distributor or the original study authors.
+
+
