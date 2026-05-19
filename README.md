@@ -1,7 +1,7 @@
 # Habitat Imaging Analysis for High-Risk Lung Adenocarcinoma (LUAD) Prediction on Low-Dose Computed Tomography
 **1.Introduction**
 
-This software implements a fully automated habitat imaging pipeline for quantifying solid components within part-solid nodules on low-dose computed tomography (LDCT) and predicting high-risk lung adenocarcinoma (LUAD). Using the Otsu threshold method, density and entropy maps are clustered to generate four distinct habitats. The solid component is defined as the high density & low entropy region, and its volume is used as the key predictor (Definition 3). The algorithm demonstrated superior diagnostic performance (AUC = 0.871 in training, 0.865 in external test) compared to conventional diameter and density measurements.
+This software implements a fully automated habitat imaging pipeline for quantifying solid components within part-solid nodules on low-dose computed tomography (LDCT) and predicting high-risk lung adenocarcinoma (LUAD). Using fixed thresholds (density: –447 HU; entropy: 4.201), density and entropy maps are clustered to generate four distinct habitats. The solid component is defined as the high density and low entropy region (Label 3), and its volume together with its volume ratio are used as key predictors in a logistic regression model.
 
 **2. File Requirements and Format**
 
@@ -23,9 +23,9 @@ The software executes the following six steps for each case:
 
 **3.2 Step 2: Local Entropy Calculation**
 
-•	Description: A 3D local entropy map is computed using a 3×3×3 moving window over the resampled CT image.
+•	Description: A 3D local entropy map is computed using a 3×3×3 moving window over the resampled and normalizated CT image.
 
-•	Formula: Shannon entropy based on a 32 bin histogram of voxel intensities within the window.
+•	Formula: Entropy based on a 32 bin histogram of voxel intensities within the window.
 
 •	Output: Entropy map saved in 2_entropy/ directory.
 
@@ -33,13 +33,13 @@ The software executes the following six steps for each case:
 
 •	Description: Within the original mask region, four binary masks are created by applying the density and entropy thresholds:
 
-o	High Density: CT values ≥ –405 HU
+o	High Density: CT values ≥ –447 HU
 
-o	Low Density: CT values < –405 HU
+o	Low Density: CT values < –447 HU
 
-o	High Entropy: Entropy values ≥ 4.204
+o	High Entropy: Entropy values ≥ 4.201
 
-o	Low Entropy: Entropy values < 4.204
+o	Low Entropy: Entropy values < 4.201
 
 •	Output: Four masks saved in 3_threshold_masks/ directory.
 
@@ -47,13 +47,13 @@ o	Low Entropy: Entropy values < 4.204
 
 •	Description: The four binary masks are combined pixel wise to create a single 4 label image according to the following rule:
 
-o	Label 1: high density & high entropy
+o	Label 1: Low density & Low entropy → Green
 
-o	Label 2: high density & low entropy
+o	Label 2: Low density & High entropy → Blue
 
-o	Label 3: low density & high entropy
+o	Label 3: High density & Low entropy (solid component) → Red
 
-o	Label 4: low density & low entropy
+o	Label 4: High density & High entropy → Yellow
 
 •	Output: Fused label image saved in 4_fusion_masks/ directory.
 
@@ -67,9 +67,25 @@ o	Label 4: low density & low entropy
 
 **3.6 Step 6: High Risk LUAD Prediction**
 
-•	Decision Rule: If the volume of Label 2 (high density & low entropy) exceeds the threshold (172 mm³), the case is classified as high risk LUAD (Class 1); otherwise low risk LUAD (Class 0).
+•	Description: Using the volume of Label 3 (high density & low entropy) in cm³ and its volume ratio, together with the patient’s sex, a logistic regression model calculates the probability of high risk LUAD.
+
+•	Formula: logit = -2.808 - 0.697 × sex + 1.702 × Label3_volume (cm³) + 0.018 × Label3_ratio, probability = 1 / (1 + exp(-logit)), where sex = 0 for man, 1 for woman.
+
+•	Decision Rule:
+o	High risk LUAD (Class 1): probability > 0.171
+o	Low risk LUAD (Class 0): probability ≤ 0.171
 
 •	Output: Prediction result saved as a CSV file in 5_prediction_results/ directory.
+
+**3.7 Step 7: Visualization Generation**
+
+•	Description: After prediction, a composite figure is automatically generated to visually summarize the analysis. This figure displays:
+o	CT map (lung window)
+o	Entropy map
+o	Habitat labels (with color legend)
+o	Solid component (Label 3) with annotation showing its volume (mm³), ratio (%), probability, and final prediction.
+
+•	Output: Saved as 05_composite.png in the 6_prediction_results/directory.
 
 **4. Disclaimer**
 
@@ -83,7 +99,7 @@ This software at the current stage is primarily intended for research purposes. 
 
 •	Performance may vary with different patient populations, CT scanner models, and acquisition protocols.
 
-•	The fixed thresholds (–405 HU, 4.204, 172 mm³) were derived from a specific study population; they may not be optimal for other cohorts without recalibration.
+•	The fixed thresholds (–447 HU, 4.201) were derived from a specific study population; they may not be optimal for other cohorts without recalibration.
 ________________________________________
 **5. Continuous Improvement**
 
