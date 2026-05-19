@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
 """
 Habitat Imaging Analysis for High-Risk Lung Adenocarcinoma (LUAD) Prediction
+Updated date：2026/5/19
 -----------------------------------------------------------------------------
 This software implements a habitat imaging pipeline to quantify solid components
 in part-solid nodules on low-dose CT and predict high-risk LUAD.
@@ -105,15 +105,15 @@ class RadiomicsPipeline:
 
         self.case_name = os.path.basename(ct_path).replace('.nii.gz', '')
 
-        # Output subdirectories
+        # Output subdirectories - corrected: 5_visualizations for images, 6_prediction_results for CSV
         self.RESAMPLE_DIR = os.path.join(output_dir, self.case_name, "1_resampled")
         self.ENTROPY_DIR = os.path.join(output_dir, self.case_name, "2_entropy_maps")
         self.DERIVED_MASKS_DIR = os.path.join(output_dir, self.case_name, "3_threshold_masks")
         self.FUSION_DIR = os.path.join(output_dir, self.case_name, "4_fusion_masks")
-        self.RESULTS_DIR = os.path.join(output_dir, self.case_name, "5_visualizations")
-        self.VIZ_DIR = os.path.join(output_dir, self.case_name, "6_prediction_results")
+        self.VIZ_DIR = os.path.join(output_dir, self.case_name, "5_visualizations")       # For PNG images
+        self.RESULTS_DIR = os.path.join(output_dir, self.case_name, "6_prediction_results") # For CSV results
         for d in [self.RESAMPLE_DIR, self.ENTROPY_DIR, self.DERIVED_MASKS_DIR,
-                  self.FUSION_DIR, self.RESULTS_DIR, self.VIZ_DIR]:
+                  self.FUSION_DIR, self.VIZ_DIR, self.RESULTS_DIR]:
             os.makedirs(d, exist_ok=True)
 
         self.log_callback = None
@@ -582,6 +582,7 @@ class RadiomicsPipeline:
                 'viz_paths': viz_paths
             }
 
+            # Save CSV to RESULTS_DIR (6_prediction_results)
             df = pd.DataFrame([result])
             csv_path = os.path.join(self.RESULTS_DIR, f"{self.case_name}_prediction.csv")
             df.to_csv(csv_path, index=False)
