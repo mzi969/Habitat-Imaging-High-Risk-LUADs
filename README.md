@@ -17,15 +17,11 @@ The software executes the following six steps for each case:
 
 •	Description: Both CT and mask images are resampled to isotropic 1 mm³ voxel spacing to standardize spatial resolution.
 
-•	Interpolation: Linear for CT, nearest neighbor for mask.
-
 •	Output: Saved in 1_resampled/ directory.
 
 **3.2 Step 2: Local Entropy Calculation**
 
 •	Description: A 3D local entropy map is computed using a 3×3×3 moving window over the resampled and normalizated CT image.
-
-•	Formula: Entropy based on a 32 bin histogram of voxel intensities within the window.
 
 •	Output: Entropy map saved in 2_entropy/ directory.
 
@@ -69,7 +65,7 @@ o	Label 4: High density & High entropy → Yellow
 
 •	Description: Using the volume of Label 3 (high density & low entropy) in cm³ and its volume ratio, together with the patient’s sex, a logistic regression model calculates the probability of high risk LUAD.
 
-•	Formula: logit = -2.808 - 0.697 × sex + 1.702 × Label3_volume (cm³) + 0.018 × Label3_ratio, probability = 1 / (1 + exp(-logit)), where sex = 0 for man, 1 for woman.
+•	Formula: logit = -2.808 - 0.697 × sex + 1.702 × Label3_volume (cm³) + 0.018 × Label3_ratio (%), probability = 1 / (1 + exp(-logit)), where sex = 0 for man, 1 for woman.
 
 •	Decision Rule:
 o	High risk LUAD (Class 1): probability > 0.171
