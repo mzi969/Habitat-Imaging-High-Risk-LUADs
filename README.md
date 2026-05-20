@@ -1,7 +1,8 @@
-# Habitat Imaging Analysis for High-Risk Lung Adenocarcinoma (LUAD) Prediction on Low-Dose Computed Tomography
+# Habitat imaging-derived “solid component” for predicting high-risk lung adenocarcinomas in part-solid nodules on low-dose CT
+
 **1.Introduction**
 
-This software implements a fully automated habitat imaging pipeline for quantifying solid components within part-solid nodules on low-dose computed tomography (LDCT) and predicting high-risk lung adenocarcinoma (LUAD). Using fixed thresholds (density: –447 HU; entropy: 4.201), density and entropy maps are clustered to generate four distinct habitats. The solid component is defined as the high density and low entropy region (Label 3), and its volume together with its volume ratio are used as key predictors in a logistic regression model.
+This software implements a fully automated habitat imaging pipeline for quantifying “solid component” within part-solid nodules on low-dose computed tomography (LDCT) and predicting high-risk lung adenocarcinoma (LUAD). Using fixed thresholds (density: −447 HU; entropy: 4.201), density and entropy maps are clustered to generate four distinct habitats. The “solid component” is defined as the high density and low entropy region (Label 3), and its volume together with its volume ratio are used as key predictors in a logistic regression model.
 
 **2. File Requirements and Format**
 
@@ -47,7 +48,7 @@ o	Label 1: Low density & Low entropy → Green
 
 o	Label 2: Low density & High entropy → Blue
 
-o	Label 3: High density & Low entropy (solid component) → Red
+o	Label 3: High density & Low entropy (“Solid component”) → Red
 
 o	Label 4: High density & High entropy → Yellow
 
@@ -65,7 +66,7 @@ o	Label 4: High density & High entropy → Yellow
 
 •	Description: Using the volume of Label 3 (high density & low entropy) in cm³ and its volume ratio, together with the patient’s sex, a logistic regression model calculates the probability of high risk LUAD.
 
-•	Formula: logit = -2.808 - 0.697 × sex + 1.702 × Label3_volume (cm³) + 0.018 × Label3_ratio (%), probability = 1 / (1 + exp(-logit)), where sex = 0 for man, 1 for woman.
+•	Formula: logit = −2.808 − 0.697 × sex (man=0, woman=1) + 1.702 × Label3_volume (cm³) + 0.018 × Label3_ratio (%), probability = 1 / (1 + exp(−logit)).
 
 •	Decision Rule:
 o	High risk LUAD (Class 1): probability > 0.171
@@ -79,7 +80,7 @@ o	Low risk LUAD (Class 0): probability ≤ 0.171
 o	CT map (lung window)
 o	Entropy map
 o	Habitat labels (with color legend)
-o	Solid component (Label 3) with annotation showing its volume (mm³), ratio (%), probability, and final prediction.
+o	“solid component” (Label 3) with annotation showing its volume (mm³), ratio (%), probability, and final prediction.
 
 •	Output: Saved as 05_composite.png in the 6_prediction_results/directory.
 
