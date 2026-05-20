@@ -7,7 +7,7 @@ in part-solid nodules on low-dose CT and predict high-risk LUAD.
 Core algorithm: density threshold (-447 HU) and entropy threshold (4.201) are used
 to generate four habitat labels; label3 volume (high density & low entropy) is used
 for prediction via logistic regression model:
-    logit = -2.808 - 0.697*sex + 1.702*label3_cm3 + 0.018*label3_ratio
+    logit = -2.808 - 0.697*sex + 1.702*label3_cm3 + 0.018*label3_ratio_%
     sex: 0=man, 1=woman
     probability = 1/(1+exp(-logit))
     prediction: High-risk if probability > 0.171
@@ -82,8 +82,8 @@ ENTROPY_THRESHOLD = 4.201     # bits
 # Logistic regression model coefficients (label3 volume in cm³)
 LOGISTIC_INTERCEPT = -2.808
 LOGISTIC_COEF_SEX = -0.697   # sex: 0=man, 1=woman
-LOGISTIC_COEF_LABEL3 = 1.702    # label3 volume in cm³
-LOGISTIC_COEF_LABEL3_RATIO = 1.8  # label3 volume ratio (percentage/100)
+LOGISTIC_COEF_LABEL3 = 1.702    # label3 volume (cm³)
+LOGISTIC_COEF_LABEL3_RATIO = 0.018  # label3 volume ratio (%)
 PROB_THRESHOLD = 0.171          # High-risk threshold
 
 
@@ -297,7 +297,7 @@ class RadiomicsPipeline:
         logit = (LOGISTIC_INTERCEPT +
                  LOGISTIC_COEF_SEX * self.sex +
                  LOGISTIC_COEF_LABEL3 * label3_vol_cm3 +
-                 LOGISTIC_COEF_LABEL3_RATIO * label3_ratio)
+                 LOGISTIC_COEF_LABEL3_RATIO * label3_ratio *100)
 
         probability = 1.0 / (1.0 + np.exp(-logit))
         prediction = 1 if probability > PROB_THRESHOLD else 0
@@ -1098,7 +1098,7 @@ class MainWindow(QMainWindow):
             </ul>
             </p>
             <p><b>Prediction Model (Logistic Regression):</b><br>
-            <b>logit = -2.808 - 0.697×sex + 1.702×Label3_volume(cm³) + 0.018×Label3_ratio</b><br>
+            <b>logit = -2.808 - 0.697×sex + 1.702×Label3_volume(cm³) + 0.018×Label3_ratio(%)</b><br>
             sex: 0=man, 1=woman<br>
             Probability = 1/(1+e<sup>-logit</sup>)<br>
             <span style="color:#f44336; font-weight:bold;">Probability > 0.171 → High‑risk LUAD</span><br>
