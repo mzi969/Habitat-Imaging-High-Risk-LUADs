@@ -56,7 +56,7 @@ o	Label 4: High density & High entropy → Yellow
 
 **3.5 Step 5: Volume Statistics**
 
-•	Description: For each of the four labels, the number of voxels, volume (mm³), and volume ratio (relative to the total mask volume) are calculated.
+•	Description: For each of the four labels, the number of voxels, volume (mm³), and volume ratio (relative to the total mask volume, %) are calculated.
 
 •	Note: Because of prior resampling to 1 mm spacing, each voxel corresponds to 1 mm³.
 
@@ -64,7 +64,7 @@ o	Label 4: High density & High entropy → Yellow
 
 **3.6 Step 6: High Risk LUAD Prediction**
 
-•	Description: Using the volume of Label 3 (high density & low entropy) in cm³ and its volume ratio, together with the patient’s sex, a logistic regression model calculates the probability of high risk LUAD.
+•	Description: Using the volume of Label 3 (high density & low entropy) in cm³ and its volume ratio in %, together with the patient’s sex, a logistic regression model calculates the probability of high risk LUAD.
 
 •	Formula: logit = −2.808 − 0.697 × sex (man=0, woman=1) + 1.702 × Label3_volume (cm³) + 0.018 × Label3_ratio (%), probability = 1 / (1 + exp(−logit)).
 
